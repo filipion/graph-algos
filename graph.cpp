@@ -3,17 +3,20 @@
 #include <vector>
 #include <queue>
 #include <algorithm>
+#include <functional>
 using namespace std;
 vector<vector<int>> SCC;
 int ANS;
+
 
 class Graph{
 	private:
 		int size;
 		vector<vector<int>> adj;
 
-		void dfs_helper(int v, vector<bool>& vis);
+		void dfs_helper(int v, vector<bool>& vis, function<void(int)>, function<void(int)>);
 		void bfs_helper(vector<bool>& vis, queue<int>& q);
+
 	public:
 		Graph(int sz) :size {sz}, adj {vector<vector<int>>(sz + 1)} {}
 
@@ -21,7 +24,7 @@ class Graph{
 		void add_edge(int v1, int v2, int weight);
 		void print();
 
-		void dfs(const vector<int>& ordered_vertices);
+		void dfs(const vector<int>& ordered_vertices, function<void(int)>, function<void(int)>);
 		void bfs(int start_vertex);
 
 		Graph reverse_graph();
@@ -51,7 +54,8 @@ void Graph::print(){
 // The recursive dfs traversal algorithm.
 // Iterates through the vector of ordered vertices and calls dfs whenever it finds a new component. 
 // We initialize a vector vis of visits locally and pass it by reference to prevent useless copying.
-void Graph::dfs(const vector<int>& ordered_vertices = {}){
+void Graph::dfs(const vector<int>& ordered_vertices = {}, function<void(int)> discovery_action = [](int){}, function<void(int)> finish_action = [](int){}){
+
 	vector<bool> vis(size);
 
 	if(!ordered_vertices.empty()){ // case of the second dfs of strongly connected components
@@ -60,28 +64,29 @@ void Graph::dfs(const vector<int>& ordered_vertices = {}){
 			if(!vis[v]){
 				++count_scc;
 				SCC.push_back(vector<int> {});
-				dfs_helper(v, vis);
+				dfs_helper(v, vis, discovery_action, finish_action);
 			}
 		}
 
 		ANS = count_scc;
 	}
 	else{ // default DFS
-		for(int i = 1; i <= size; ++i)
-			if(!vis[i])
-				dfs_helper(i, vis);
+		for(int v = 1; v <= size; ++v)
+			if(!vis[v])
+				dfs_helper(v, vis, discovery_action, finish_action);
 	}
 }
 
 
 // Basic dfs recursive function.
-void Graph::dfs_helper(int v, vector<bool>& vis){
+void Graph::dfs_helper(int v, vector<bool>& vis, function<void(int)> discovery_action, function<void(int)> finish_action){
 	vis[v] = 1;
-	SCC.back().push_back(v);
+	discovery_action(v);
 
 	for(auto u: adj[v])
 		if(!vis[u])
-			dfs_helper(u, vis);
+			dfs_helper(u, vis, discovery_action, finish_action);
+	finish_action(v);
 }
 
 
@@ -113,41 +118,27 @@ void Graph::bfs_helper(vector<bool>& vis, queue<int>& q){
 }
 
 
-//Strongly connected components. Uses
-void Graph::strongly_connected_components(){
-	vector<int> order_for_scc;
-	order_for_scc = this->compute_order_scc();
-
-	Graph rg = this->reverse_graph();
-	rg.dfs(order_for_scc);
-}
-
-
-// Slightly modified DFS, that builds up a vector of the vertices in reverse order of their finishing times.
+// Strongly connected components. 
+// Uses slightly modified DFS, that builds up a vector of the vertices in reverse order of their finishing times.
 // Required by Kosaraju's algorithm for SCC. This ordering satisfies the property that the first occurences
 // of all SCCs form a topologicaly sorted subsequence.
-vector<int> Graph::compute_order_scc(){
-	vector<bool> vis(size);
+void Graph::strongly_connected_components(){
 	vector<int> order_for_scc;
-
-	for(int i = 1; i <= size; ++i)
-		if(!vis[i])
-			scc_helper(i, vis, order_for_scc);
-
-
+	// Because DFS takes functions as parameters we do not have to implement it again
+	dfs({}, [](int){}, [&order_for_scc](int v){order_for_scc.push_back(v);}); 
 	reverse(order_for_scc.begin(), order_for_scc.end());
-	return order_for_scc;
-}
 
+	Graph g_reversed = this->reverse_graph();
 
-void Graph::scc_helper(int v, vector<bool>& vis, vector<int>& order_for_scc){
-	vis[v] = 1;
+	vector<bool> vis(size);
 
-	for(auto u: adj[v])
-		if(!vis[u])
-			scc_helper(u, vis, order_for_scc);
-
-	order_for_scc.push_back(v);
+	for(auto v: order_for_scc){
+		if(!vis[v]){
+			// we DFS traverse again. Each call of dfs fills out a SCC
+			SCC.push_back(vector<int> {});
+			g_reversed.dfs_helper(v, vis, [](int v){SCC.back().push_back(v);}, [](int v){}); 
+		}
+	}
 }
 
 
