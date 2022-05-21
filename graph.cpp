@@ -26,7 +26,7 @@ class Graph{
 
 		Graph reverse_graph();
 		void scc_helper(int v, vector<bool>& vis, vector<int>& order_for_scc);
-		void compute_order_scc(vector<int>&);
+		vector<int> compute_order_scc();
 		void strongly_connected_components();
 
 };
@@ -74,7 +74,7 @@ void Graph::dfs(const vector<int>& ordered_vertices = {}){
 }
 
 
-//basic dfs recursive function.
+// Basic dfs recursive function.
 void Graph::dfs_helper(int v, vector<bool>& vis){
 	vis[v] = 1;
 	SCC.back().push_back(v);
@@ -113,18 +113,22 @@ void Graph::bfs_helper(vector<bool>& vis, queue<int>& q){
 }
 
 
-//Strongly connected components
+//Strongly connected components. Uses
 void Graph::strongly_connected_components(){
 	vector<int> order_for_scc;
-	compute_order_scc(order_for_scc);
+	order_for_scc = this->compute_order_scc();
 
 	Graph rg = this->reverse_graph();
 	rg.dfs(order_for_scc);
 }
 
 
-void Graph::compute_order_scc(vector<int>& order_for_scc){
+// Slightly modified DFS, that builds up a vector of the vertices in reverse order of their finishing times.
+// Required by Kosaraju's algorithm for SCC. This ordering satisfies the property that the first occurences
+// of all SCCs form a topologicaly sorted subsequence.
+vector<int> Graph::compute_order_scc(){
 	vector<bool> vis(size);
+	vector<int> order_for_scc;
 
 	for(int i = 1; i <= size; ++i)
 		if(!vis[i])
@@ -132,10 +136,10 @@ void Graph::compute_order_scc(vector<int>& order_for_scc){
 
 
 	reverse(order_for_scc.begin(), order_for_scc.end());
+	return order_for_scc;
 }
 
 
-//basic dfs recursive function.
 void Graph::scc_helper(int v, vector<bool>& vis, vector<int>& order_for_scc){
 	vis[v] = 1;
 
@@ -147,6 +151,7 @@ void Graph::scc_helper(int v, vector<bool>& vis, vector<int>& order_for_scc){
 }
 
 
+// Reverse a graph
 Graph Graph::reverse_graph(){
 	Graph rg(size);
 
