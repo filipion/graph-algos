@@ -15,23 +15,15 @@ const int infty = 2*1e5;
 const int max_matrix = 31;
 using Adj_Matrix = array<array<int, max_matrix>, max_matrix>;
 
-// Elements of the adjacency list we use. 
+// Elements of the adjacency lists we will use. 
 // When edge(v, d) is in adj[u], v represents the outvertex and d the weight of the edge from u to v.
 struct Edge{
-	int vertex;
-	int weight;
-	Edge(int v, int w){
-		vertex = v, weight = w;
-	}
-};
-
-
-struct SymmetricEdge{
-	int from;
 	int to;
-	int id;
 	int weight;
-	SymmetricEdge(int from, int to, int id, int weight=1): from{from}, to{to}, id{id}, weight{weight} {}
+	int id;
+	Edge(int destination, int w){
+		to = destination, weight = w;
+	}
 };
 
 
@@ -40,18 +32,17 @@ class Graph{
 	private:
 		int size;
 		vector<vector<Edge>> adj;
-		vector<vector<SymmetricEdge>> sym_adj;
 
 		void dfs_recursive(int v, vector<bool>& vis, function<void(int)>, function<void(int)>);
 		void bfs_recursive(vector<bool>& vis, queue<int>& q);
+		void euler_helper(int node, vector<int>& vis, vector<int>& cycle);
 
 	public:
-		Graph(int sz) :size {sz}, adj {vector<vector<Edge>>(sz + 1)}, sym_adj {vector<vector<SymmetricEdge>>(sz + 1)} {}
+		Graph(int sz) :size {sz}, adj {vector<vector<Edge>>(sz + 1)} {}
 
 		void push_vertex();
 		void pop_vertex();
 		void add_edge(int v1, int v2, int weight);
-		void add_symmetric_edge(int v1, int v2, int id, int weight);
 		void print();
 
 		void dfs(function<void(int)>, function<void(int)>);
@@ -69,7 +60,6 @@ class Graph{
 		vector<vector<int>> all_shortest_paths_johnsons();
 
 		vector<int> eulerian_cycle(int number_edges);
-		void euler_helper(int node, vector<int>& vis, vector<int>& cycle);
 };
 
 
@@ -82,21 +72,13 @@ void Graph::add_edge(int v1, int v2, int weight=1){
 }
 
 
-void Graph::add_symmetric_edge(int from, int to, int id, int weight=1){
-	SymmetricEdge e1(from, to, id, weight);
-	SymmetricEdge e2(to, from, id, weight);
-	sym_adj[from].push_back(e1);
-	sym_adj[to].push_back(e2);
-}
-
-
 void Graph::print(){
 	cout << "Graph on " << size << " vertices with edges:";
 
 	for(int i=1; i <= size; ++i){
 		cout << i << ":";
 		for(auto edge: adj[i])
-			printf("(to: %d, weight: %d) ", edge.vertex, edge.weight);
+			printf("(to: %d, weight: %d) ", edge.to, edge.weight);
 		cout << "\n";
 	}
 }
@@ -135,9 +117,9 @@ void Graph::dfs_recursive(int v, vector<bool>& vis, function<void(int v)> discov
 	vis[v] = 1;
 	discovery_action(v);
 
-	for(auto e: adj[v])
-		if(!vis[e.vertex])
-			dfs_recursive(e.vertex, vis, discovery_action, finish_action);
+	for(auto edge: adj[v])
+		if(!vis[edge.to])
+			dfs_recursive(edge.to, vis, discovery_action, finish_action);
 
 	finish_action(v);
 }
@@ -159,10 +141,10 @@ void Graph::bfs(int start_vertex){
 void Graph::bfs_recursive(vector<bool>& vis, queue<int>& q){
 	int v = q.front();
 
-	for(auto e: adj[v])
-		if(!vis[e.vertex]){
-			q.push(e.vertex);
-			vis[e.vertex] = 1;
+	for(auto edge: adj[v])
+		if(!vis[edge.to]){
+			q.push(edge.to);
+			vis[edge.to] = 1;
 		}
 
 	q.pop(); 
@@ -206,8 +188,8 @@ Graph Graph::reversed_graph(){
 	Graph rg(size);
 
 	for(int v = 1; v <= size; ++v)
-		for(auto e: adj[v])
-			rg.add_edge(e.vertex, v);
+		for(auto edge: adj[v])
+			rg.add_edge(edge.to, v);
 
 	return rg;
 }
@@ -240,9 +222,9 @@ vector<int> Graph::shortest_paths_dijkstra(int source){
 		vis[v] = 1;
 
 		for(auto edge: adj[v])
-			if(distance[edge.vertex] > distance[v] + edge.weight){
-				distance[edge.vertex] = distance[v] + edge.weight;
-				pq.push(make_pair(edge.vertex, distance[edge.vertex]));
+			if(distance[edge.to] > distance[v] + edge.weight){
+				distance[edge.to] = distance[v] + edge.weight;
+				pq.push(make_pair(edge.to, distance[edge.to]));
 			}
 	}
 
@@ -264,14 +246,14 @@ vector<int> Graph::shortest_paths_bellman_ford(int source){
 		// Body of the loop traverses all edges once and relaxes the distance vector.
 		for(int v = 1; v <= size; ++v)
 			for(auto edge: adj[v])
-				if(distance[edge.vertex] > distance[v] + edge.weight)
-					distance[edge.vertex] = distance[v] + edge.weight;
+				if(distance[edge.to] > distance[v] + edge.weight)
+					distance[edge.to] = distance[v] + edge.weight;
 	}
 
 	// If executing the body of the previous for once again would decrease distances, then a negative cycle exists.
 	for(int v = 1; v <= size; ++v)
 		for(auto edge: adj[v])
-			if(distance[edge.vertex] > distance[v] + edge.weight)
+			if(distance[edge.to] > distance[v] + edge.weight)
 				distance = {};
 
 	return distance;
@@ -317,8 +299,9 @@ vector<vector<int>> Graph::all_shortest_paths_johnsons(){
 
 	for(int i = 1; i <= size; ++i)
 		for(auto edge: adj[i])
-			reweighted_g.add_edge(i, edge.vertex, h[edge.vertex] - h[i] + edge.weight);
+			reweighted_g.add_edge(i, edge.to, h[edge.to] - h[i] + edge.weight);
 			
+	// We apply Dijkstra repeatedly to get the distances in the reweighted graph. Adding h[i] - h[j] gives back the original dists.	
 	vector<vector<int>> all_paths(size + 1);
 
 	for(int i = 1; i <= size; ++i){
@@ -331,12 +314,15 @@ vector<vector<int>> Graph::all_shortest_paths_johnsons(){
 }
 
 
-// Primm algorithm for minimal spanning tree. The code here is just dijkstra with a slightly different condition.
 vector<int> Graph::minimal_spanning_tree(int source=1){
+	/* Primm algorithm for minimal spanning tree. Returns the a vector of size V + 1. 
+	For i from 2 to n, MST[i] is the parent of i in the MST.
+	MST[1] is not used. MST[0] returns the total cost of the spanning tree.
+	*/
 	vector<bool> vis(size + 1);
 	vector<int> key(size + 1);
 	vector<int> parent(size + 1);
-	int v, d;
+	int current_vertex, weight_to_here;
 	int total = 0;
 
 	for(int i = 1; i <= size; ++i)
@@ -349,19 +335,19 @@ vector<int> Graph::minimal_spanning_tree(int source=1){
 	pq.push(make_pair(source, 0));
 
 	while(!pq.empty()){
-		v = pq.top().first;
-		d = pq.top().second;
+		current_vertex = pq.top().first;
+		weight_to_here = pq.top().second;
 		pq.pop();
-		if(vis[v])
+		if(vis[current_vertex])
 			continue;
-		vis[v] = 1;
-		total += d; 
+		vis[current_vertex] = 1;
+		total += weight_to_here; 
 
-		for(auto edge: adj[v])
-			if(key[edge.vertex] > edge.weight && !vis[edge.vertex]){
-				key[edge.vertex] = edge.weight;
-				parent[edge.vertex] = v;
-				pq.push(make_pair(edge.vertex, key[edge.vertex]));
+		for(auto edge: adj[current_vertex])
+			if(key[edge.to] > edge.weight && !vis[edge.to]){
+				key[edge.to] = edge.weight;
+				parent[edge.to] = current_vertex;
+				pq.push(make_pair(edge.to, key[edge.to]));
 			}
 	}
 
@@ -370,11 +356,12 @@ vector<int> Graph::minimal_spanning_tree(int source=1){
 }
 
 
-Graph random_graph(int size){
+Graph random_graph(int size, int sparsity){
+	// Probability for the edge (i, j) to exist in the graph is 1/sparsity. Weights are nitialized to random digits.
 	Graph g = Graph(size);
 	for(int i = 1; i <= size; ++i)
 		for(int j = 1; j <= size; ++j){
-			if(rand() % 3 == 1)
+			if(rand() % sparsity == 1)
 				g.add_edge(i, j, rand() % 10 + 1);
 		}
 
@@ -383,9 +370,10 @@ Graph random_graph(int size){
 
 
 vector<int> Graph::eulerian_cycle(int m){
-	// Return {-1} for non eulerian graphs.
-	for(int i = 1; i <= size; ++i)
-		if(sym_adj[i].size() & 1)
+	/* Returns an eulerian cycle for graphs that admit such cycles, and the vector {-1} for graphs that do not.
+	*/
+	for(int i = 1; i <= size; ++i) // check if the currect graph is eulerian
+		if(adj[i].size() & 1)
 			return vector<int> {-1};
 
 	vector<int> cycle;
@@ -398,9 +386,9 @@ vector<int> Graph::eulerian_cycle(int m){
 
 void Graph::euler_helper(int node, vector<int>& vis, vector<int>& cycle){
 
-	while(!sym_adj[node].empty()){
-		SymmetricEdge edge = sym_adj[node].back();
-		sym_adj[node].pop_back();
+	while(!adj[node].empty()){
+		Edge edge = adj[node].back();
+		adj[node].pop_back();
 
 
 		if(!vis[edge.id]){
@@ -418,28 +406,22 @@ int main(){
 	srand(time(0));
 	ifstream fin;
 	ofstream fout;
-	fin.open("royfloyd.in");
-	fout.open("royfloyd.out");
+	fin.open("apm.in");
+	fout.open("apm.out");
 
 	int n, m, u, v, weight;
-	fin >> n;
+	fin >> n >> m;
 	Graph g(n);
-
-	for(int i=1; i <= n; ++i)
-		for(int j=1; j <= n; ++j){
-			fin >> weight;
-			if(weight || i == j)
-				g.add_edge(i, j, weight);
-			else
-				g.add_edge(i, j, infty);
-		}
-
-	vector<vector<int>> all_paths = g.all_shortest_paths_johnsons();
-
-	for(int i=1; i <= n; ++i){
-		for(int j=1; j <= n; ++j){
-			fout << ((all_paths[i][j] >= infty) ? 0 : all_paths[i][j]) << " ";
-		}
-		fout << "\n";
+	for(int i=1; i<=m; ++i){
+		fin >> u >> v >> weight;
+		g.add_edge(u, v, weight);
+		g.add_edge(v, u, weight);
 	}
+
+	vector<int> mst = g.minimal_spanning_tree();
+	fout << mst[0] << "\n" << n - 1 << "\n";
+	for(int i = 2; i <= n; ++i)
+		fout << i << " " << mst[i] << "\n";
+
+	
 }
