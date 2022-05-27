@@ -1,16 +1,11 @@
 #include <fstream>
 #include <iostream>
 #include <vector>
-#include <stack>
 #include <queue>
-#include <deque>
-#include <algorithm>
 #include <functional>
-#include <ctime>
-#include <cassert>
 
 using namespace std;
-const int infty = 2*1e5;
+const int infty = 2*1e9;
 
 const int max_matrix = 31;
 using Adj_Matrix = array<array<int, max_matrix>, max_matrix>;
@@ -20,9 +15,9 @@ using Adj_Matrix = array<array<int, max_matrix>, max_matrix>;
 struct Edge{
 	int to;
 	int weight;
-	int id;
-	Edge(int destination, int w){
-		to = destination, weight = w;
+	int tag; // a tag for the edges needed for example when computing an eulerian cycle
+	Edge(int destination, int w, int tag){
+		to = destination, weight = w, tag = tag;
 	}
 };
 
@@ -30,12 +25,13 @@ struct Edge{
 // Weighted (ordered) graph
 class Graph{
 	private:
-		int size;
-		vector<vector<Edge>> adj;
+		int size; // the number of vertices  
+		int num_edges;              
+		vector<vector<Edge>> adj; //holds the adjacency list representation of the graph
 
 		void dfs_recursive(int v, vector<bool>& vis, function<void(int)>, function<void(int)>);
 		void bfs_recursive(vector<bool>& vis, queue<int>& q);
-		void euler_helper(int node, vector<int>& vis, vector<int>& cycle);
+		void euler_helper(int node, vector<bool>& vis, vector<int>& cycle);
 
 	public:
 		Graph(int sz) :size {sz}, adj {vector<vector<Edge>>(sz + 1)} {}
@@ -43,7 +39,9 @@ class Graph{
 		void push_vertex();
 		void pop_vertex();
 		void add_edge(int v1, int v2, int weight);
+		void add_symmetric_edge(int v1, int v2, int weight);
 		void print();
+		int get_num_edges();
 
 		void dfs(function<void(int)>, function<void(int)>);
 		void bfs(int start_vertex);
@@ -68,7 +66,26 @@ class Graph{
 
 void Graph::add_edge(int v1, int v2, int weight=1){
 	// Adds an edge from v1 to v2 in the graph with weight "weight"
-	adj[v1].push_back(Edge(v2, weight));
+	int id = ++num_edges;
+	Edge e = Edge(v2, weight, id);
+	adj[v1].push_back(e);
+	num_edges = num_edges + 1;
+}
+
+
+void Graph::add_symmetric_edge(int v1, int v2, int weight=1){
+	// Adds an edge from v1 to v2 and the opposite edge, both with the same tag.
+	// Use this for unoriented graphs.
+	int id = ++num_edges;
+	Edge e1 = Edge(v2, weight, id);
+	Edge e2 = Edge(v1, weight, id);
+	adj[v1].push_back(e1);
+	adj[v2].push_back(e2);
+}
+
+
+int Graph::get_num_edges(){
+	return num_edges;
 }
 
 
@@ -215,15 +232,15 @@ vector<int> Graph::shortest_paths_dijkstra(int source){
 	pq.push(make_pair(source, 0));
 
 	while(!pq.empty()){
-		int v = pq.top().first;
+		int current_vertex = pq.top().first;
 		pq.pop();
-		if(vis[v])
+		if(vis[current_vertex])
 			continue;
-		vis[v] = 1;
+		vis[current_vertex] = 1;
 
-		for(auto edge: adj[v])
-			if(distance[edge.to] > distance[v] + edge.weight){
-				distance[edge.to] = distance[v] + edge.weight;
+		for(auto edge: adj[current_vertex])
+			if(distance[edge.to] > distance[current_vertex] + edge.weight){
+				distance[edge.to] = distance[current_vertex] + edge.weight;
 				pq.push(make_pair(edge.to, distance[edge.to]));
 			}
 	}
@@ -261,6 +278,12 @@ vector<int> Graph::shortest_paths_bellman_ford(int source){
 
 
 Adj_Matrix all_shortest_paths_floyd_warshall(int n, Adj_Matrix M){
+	/* Floyd-Warshall algorithm for al shortest paths. Does not work with adjacency lists directly, you need to pass a max_size
+	and the Adj_Matrix. 
+	*/
+
+	// dp is our dynamic programming data structure.
+	// dp[i][j][k] := length of the shortest path from i to j whose intermediary vertices are all included in [1..k] 
 	int dp[max_matrix][max_matrix][max_matrix];
 	Adj_Matrix ans;
 
@@ -271,7 +294,8 @@ Adj_Matrix all_shortest_paths_floyd_warshall(int n, Adj_Matrix M){
 	for(int k = 1; k <= n; ++k)
 		for(int i = 1; i <= n; ++i)
 			for(int j = 1; j <= n; ++j)
-				dp[i][j][k] = min(dp[i][j][k - 1], dp[i][k][k - 1] + dp[k][j][k - 1]);
+				dp[i][j][k] = min(dp[i][j][k - 1],  // case 1: the optimal path that does not include k
+							      dp[i][k][k - 1] + dp[k][j][k - 1]); // case 2: the optimal path that includes k is formed of two portions that di not include it
 
 	for(int i = 1; i <= n; ++i)
 		for(int j = 1; j <= n; ++j)
@@ -282,8 +306,7 @@ Adj_Matrix all_shortest_paths_floyd_warshall(int n, Adj_Matrix M){
 
 
 vector<vector<int>> Graph::all_shortest_paths_johnsons(){
-	/*
-	Johnson's algorithm for all shortest paths. Returns a table all_paths such that all_paths[i][j] is the shortest
+	/* Johnson's algorithm for all shortest paths. Returns a table all_paths such that all_paths[i][j] is the shortest
 	possible distance of a route from i to j.
 	*/
 	this->push_vertex(); //add a virtual vertex to compute reweightings
@@ -358,7 +381,7 @@ vector<int> Graph::minimal_spanning_tree(int source=1){
 
 Graph random_graph(int size, int sparsity){
 	// Probability for the edge (i, j) to exist in the graph is 1/sparsity. Weights are nitialized to random digits.
-	Graph g = Graph(size);
+	Graph g(size);
 	for(int i = 1; i <= size; ++i)
 		for(int j = 1; j <= size; ++j){
 			if(rand() % sparsity == 1)
@@ -369,30 +392,30 @@ Graph random_graph(int size, int sparsity){
 }
 
 
-vector<int> Graph::eulerian_cycle(int m){
+vector<int> Graph::eulerian_cycle(int num_edges){
 	/* Returns an eulerian cycle for graphs that admit such cycles, and the vector {-1} for graphs that do not.
 	*/
-	for(int i = 1; i <= size; ++i) // check if the currect graph is eulerian
+	for(int i = 1; i <= size; ++i) // check if the graph is eulerian
 		if(adj[i].size() & 1)
 			return vector<int> {-1};
 
 	vector<int> cycle;
-	vector<int> vis(m + 1);
+	vector<bool> vis(num_edges + 1);
 	
 	euler_helper(1, vis, cycle);
 	return cycle;
 }
 
 
-void Graph::euler_helper(int node, vector<int>& vis, vector<int>& cycle){
+void Graph::euler_helper(int node, vector<bool>& vis, vector<int>& cycle){
 
 	while(!adj[node].empty()){
 		Edge edge = adj[node].back();
 		adj[node].pop_back();
 
 
-		if(!vis[edge.id]){
-			vis[edge.id] = 1;
+		if(!vis[edge.tag]){
+			vis[edge.tag] = 1;
 			euler_helper(edge.to, vis, cycle);
 		}
 	}
@@ -401,27 +424,27 @@ void Graph::euler_helper(int node, vector<int>& vis, vector<int>& cycle){
 }
 
 
-int main(){
-	
-	srand(time(0));
+Graph read_graph_from_file(string f_name, bool unoriented=false){
+	/* Reads a graph from the supplied filename. 
+	Format: - First line shoud consist of two integers V and E, the number of vertices and edges respectively.
+			- Each of the following lines should consist of 3 integers, u, v, and w := there exists and edge (u, v) of weight w
+	*/
 	ifstream fin;
-	ofstream fout;
-	fin.open("apm.in");
-	fout.open("apm.out");
+	fin.open(f_name);
+	int num_vertices, num_edges;
+	fin >> num_vertices;
+	Graph g(num_vertices);
 
-	int n, m, u, v, weight;
-	fin >> n >> m;
-	Graph g(n);
-	for(int i=1; i<=m; ++i){
-		fin >> u >> v >> weight;
-		g.add_edge(u, v, weight);
-		g.add_edge(v, u, weight);
+	int u, v, w;
+	for(int i = 1; i <= num_edges; ++i){
+		fin >> u >> v;
+		if(unoriented)
+			g.add_symmetric_edge(u, v, w);
+		else
+			g.add_edge(u, v, w);
 	}
 
-	vector<int> mst = g.minimal_spanning_tree();
-	fout << mst[0] << "\n" << n - 1 << "\n";
-	for(int i = 2; i <= n; ++i)
-		fout << i << " " << mst[i] << "\n";
-
-	
+	return g;
 }
+
+int main(){}
